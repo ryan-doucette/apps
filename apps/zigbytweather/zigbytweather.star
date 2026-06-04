@@ -69,38 +69,46 @@ def weather_glyph(code, night = False):
     return SUNNY
 
 # -------------------------
-# Weather fetch
+# Helpers
 # -------------------------
 def round_coord(value):
     return str(math.round(float(value) * COORDINATE_SCALE) / COORDINATE_SCALE)
 
+# -------------------------
+# Weather fetch (with retry)
+# -------------------------
 def fetch_weather(lat, lng, timezone):
-    tz = timezone if timezone != None and timezone != "" else "auto"
+    tz = timezone if timezone else "auto"
     rounded_lat = round_coord(lat)
     rounded_lng = round_coord(lng)
 
-    url = (
-        "https://api.open-meteo.com/v1/forecast" +
-        "?latitude=" + rounded_lat +
-        "&longitude=" + rounded_lng +
-        "&current=temperature_2m,is_day,weather_code" +
-        "&temperature_unit=fahrenheit" +
-        "&forecast_days=1" +
+    url = "https://api.open-meteo.com/v1/forecast" + \
+        "?latitude=" + rounded_lat + \
+        "&longitude=" + rounded_lng + \
+        "&current=temperature_2m,is_day,weather_code" + \
+        "&temperature_unit=fahrenheit" + \
+        "&forecast_days=1" + \
         "&timezone=" + tz
-    )
 
-    resp = http.get(url = url, ttl_seconds = FORECAST_TTL_SECONDS)
-    if resp.status_code != 200:
-        print("Open-Meteo request failed: %d" % resp.status_code)
-        return None
+    for attempt in range(2):
+        resp = http.get(url=url, ttl_seconds=FORECAST_TTL_SECONDS)
 
-    return json.decode(resp.body())
+        if resp.status_code == 200:
+            return json.decode(resp.body())
+
+        print("Open-Meteo attempt failed: %d" % resp.status_code)
+
+        if attempt == 0:
+            time.sleep(0.15)
+
+    print("Open-Meteo failed after retries")
+    return None
 
 # -------------------------
 # Time helpers
 # -------------------------
 def get_time_strings(timezone = None):
-    if timezone != None and timezone != "":
+    if timezone:
         now = time.now().in_location(timezone)
     else:
         now = time.now()
